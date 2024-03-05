@@ -1,0 +1,42 @@
+#![cfg(test)]
+
+use runtime::*;
+use frame_remote_externalities::{
+	Builder, Mode, OfflineConfig, SnapshotConfig,
+};
+use sp_core::crypto::Ss58Codec;
+
+type AccountId = <Runtime as frame_system::Config>::AccountId;
+
+// Your replay logic here:
+//
+// This can be treated as a unit test like in the Polkadot-SDK repo. The runtime is in scope as
+// `runtime` and pallets can be accessed like eg `System::block_number()`.
+fn replay(_block: Block) {
+	let alice = AccountId::from_ss58check("16a357f5Sxab3V2ne4emGQvqJaCLeYpTMx3TCjnQhmJQ71DX")
+							.expect("Static data is known good");
+	let origin = RuntimeOrigin::signed(alice);
+	frame_support::assert_ok!(FellowshipSalary::payout(origin));
+}
+
+#[tokio::test]
+async fn main() {
+	sp_tracing::try_init_simple();
+
+	let raw_block = std::fs::read("<%= &self.raw_block_path %>")
+		.expect("Block file not found");
+	let block = codec::Decode::decode(&mut &raw_block[..])
+		.expect("Block decoding failed");
+	
+	let state_snapshot = SnapshotConfig::new("<%= &self.snap_path %>");
+	Builder::<Block>::default()
+		.mode(Mode::Offline(
+			OfflineConfig { state_snapshot },
+		))
+		.build()
+		.await
+		.unwrap()
+		.execute_with(|| {
+			replay(block);
+		});
+}

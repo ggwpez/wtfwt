@@ -1,0 +1,17 @@
+[package]
+name = "replay"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+runtime = { package = "<%= self.runtime_name %>-runtime", git = "https://github.com/<%= self.source_repo %>.git", rev = "<%= self.source_rev %>" }
+
+[dev-dependencies]
+# Need to use * everywhere since we want to use the lockfile of the dep.
+frame-remote-externalities = { version = "*" }
+tokio = { version = "*", features = ["macros"] }
+sp-tracing = { version = "*" }
+sp-core = "*"
+frame-support = "*"
+frame-system = "*"
+codec = { package = "parity-scale-codec", version = "*" }
