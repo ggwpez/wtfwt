@@ -142,6 +142,7 @@ impl Cmd {
         let filename = format!("block-{}.raw", array_bytes::bytes2hex("0x", &hash.0));
         let path = PathBuf::from(&filename);
 
+        // curl -H "Content-Type: application/json" -d '{"id":1, "jsonrpc":"2.0", "method": "chain_getBlock", "params": ["0xab05097a587eb782eb11d490bd1154fc789460fecf39c585357d1c40b8e76953"]}' http://127.0.0.1:9955 > raw
         if path.exists() {
             log::info!("Block already exists at: {:?}", path);
             return Ok(path);

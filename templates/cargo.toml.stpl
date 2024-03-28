@@ -15,3 +15,4 @@ sp-core = "*"
 frame-support = "*"
 frame-system = "*"
 codec = { package = "parity-scale-codec", version = "*" }
+log = "*"
