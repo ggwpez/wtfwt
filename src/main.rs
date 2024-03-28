@@ -10,8 +10,8 @@ use std::process::Stdio;
 use std::path::Path;
 use sailfish::TemplateOnce;
 use parity_scale_codec::Encode;
-
 use subxt::{OnlineClient, PolkadotConfig, utils::H256};
+use std::collections::HashMap;
 
 type Api = OnlineClient::<PolkadotConfig>;
 
@@ -55,20 +55,21 @@ async fn main() -> Result<()> {
 impl Cmd {
     pub async fn run(&self) -> Result<()> {
         self.validate_args()?;
+        let raw_block = self.download_raw_block().await?;
         let api = OnlineClient::<PolkadotConfig>::from_url(&self.rpc).await?;
 
         let parent = self.find_parent_block(&api).await?;
-        let raw_block = self.download_raw_block(&api).await?;
+        
 
         let snap = self.create_snap(parent)?;
         let project = self.setup_project(&snap, &raw_block)?;
 
         // move snap to project folder
         let snap_path = project.join(snap.file_name().unwrap());
-        std::fs::rename(&snap, &snap_path)?;
+        std::fs::copy(&snap, &snap_path)?;
         // move raw block to project folder
         let raw_block_path = project.join(raw_block.file_name().unwrap());
-        std::fs::rename(&raw_block, &raw_block_path)?;
+        std::fs::copy(&raw_block, &raw_block_path)?;
 
         self.download_lockfile(&project).await?;
 
@@ -135,31 +136,41 @@ impl Cmd {
         Ok(parent)
     }
 
-    async fn download_raw_block(&self, api: &Api) -> Result<PathBuf> {
+    async fn download_raw_block(&self) -> Result<PathBuf> {
         log::info!("Downloading raw block");
         let hash = array_bytes::hex2bytes(&self.block).map_err(|_| anyhow!("Invalid block hash"))?;
         let hash = H256::from_slice(&hash);
         let filename = format!("block-{}.raw", array_bytes::bytes2hex("0x", &hash.0));
         let path = PathBuf::from(&filename);
 
-        // curl -H "Content-Type: application/json" -d '{"id":1, "jsonrpc":"2.0", "method": "chain_getBlock", "params": ["0xab05097a587eb782eb11d490bd1154fc789460fecf39c585357d1c40b8e76953"]}' http://127.0.0.1:9955 > raw
         if path.exists() {
             log::info!("Block already exists at: {:?}", path);
             return Ok(path);
         }
 
-        let header = api.backend().block_header(hash).await?.ok_or(anyhow!("Block not found"))?;
-        let extrinsics = api.backend().block_body(hash).await?.ok_or(anyhow!("Block not found"))?;
-        // concat all extrinsics
-        let mut raw_extrinsics = Vec::new();
-        for extrinsic in extrinsics.iter() {
-            raw_extrinsics.extend(extrinsic.encode());
-        }
-        
-        let raw = header.encode();
-        std::fs::write(&path, raw)?;
-        assert!(path.exists());
-        log::info!("Block downloaded at: {:?}", path);
+        // curl -H "Content-Type: application/json" -d '{"id":1, "jsonrpc":"2.0", "method": "chain_getBlock", "params": ["0xab05097a587eb782eb11d490bd1154fc789460fecf39c585357d1c40b8e76953"]}' http://127.0.0.1:9955 > raw
+
+        let url = self.rpc.replace("wss://", "http://").replace("ws://", "http://");
+        let response = reqwest::Client::new()
+            .post(&url)
+            .json(&serde_json::json!({
+                "id": 1,
+                "jsonrpc": "2.0",
+                "method": "chain_getBlock",
+                "params": [self.block],
+            }))
+            .send()
+            .await?
+            .error_for_status()?
+            .bytes()
+            .await?;
+        let response: serde_json::Value = serde_json::from_slice(&response)?;
+        let raw_block = response["result"]["block"].clone();
+        std::fs::write(&path,
+            serde_json::to_string_pretty(&raw_block)?
+        )?;
+
+        log::info!("Block downloaded to: {:?}", path);
 
         Ok(path)
     }
@@ -175,15 +186,15 @@ impl Cmd {
         }
 
         let mut cmd = Command::new("try-runtime");
-        cmd.arg("create-snapshot")
+        let out = cmd.arg("create-snapshot")
             .args(["--uri", &self.rpc])
             .args(["--at", &block])
             .arg(&filename)
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped());
+            .spawn()?
+            .wait()?;
 
         log::debug!("Running command: {:?}", cmd);
-        if !cmd.output()?.status.success() {
+        if !out.success() {
             return Err(anyhow!("Failed to create snap"));
         }
 
