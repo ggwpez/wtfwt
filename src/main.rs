@@ -150,7 +150,7 @@ impl Cmd {
 
         // curl -H "Content-Type: application/json" -d '{"id":1, "jsonrpc":"2.0", "method": "chain_getBlock", "params": ["0xab05097a587eb782eb11d490bd1154fc789460fecf39c585357d1c40b8e76953"]}' http://127.0.0.1:9955 > raw
 
-        let url = self.rpc.replace("wss://", "http://").replace("ws://", "http://");
+        let url = self.rpc.replace("wss://", "https://").replace("ws://", "http://");
         let response = reqwest::Client::new()
             .post(&url)
             .json(&serde_json::json!({
